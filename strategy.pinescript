@@ -1,0 +1,68 @@
+//@version=5
+strategy("FDR Pattern Alpha Engine", overlay=true, initial_capital=10000, default_qty_type=strategy.percent_of_equity, default_qty_value=100)
+
+// ==========================================
+// 1. CÁLCULO DE ATRIBUTOS DE LA VELA
+// ==========================================
+
+// Filtro de Tendencia (SMA 50)
+sma50 = ta.sma(close, 50)
+trend = close > sma50 ? 1 : 0
+
+// Color (1: Alcista, 0: Bajista)
+color_val = close >= open ? 1 : 0
+
+// Cuerpo y Rango Total
+body = math.abs(close - open)
+total_range = high - low
+body_rel = total_range > 0 ? body / total_range : 0
+
+// Categórico de cuerpo (Usamos umbral 0.50)
+body_cat = body_rel > 0.50 ? 1 : 0
+
+// Mechas
+max_oc = math.max(open, close)
+min_oc = math.min(open, close)
+upper_wick = total_range > 0 ? (high - max_oc) / total_range : 0
+lower_wick = total_range > 0 ? (min_oc - low) / total_range : 0
+
+int wick_cat = 2
+if upper_wick > 0.4
+    wick_cat := 0
+else if lower_wick > 0.4
+    wick_cat := 1
+
+// ID de Token único (0 a 23)
+base_token = (color_val * 6) + (body_cat * 3) + wick_cat
+token = (trend * 12) + base_token
+
+// ==========================================
+// 2. DETECCIÓN DE PATRONES GANADORES
+// ==========================================
+
+// Leemos el token de la vela anterior (hace 1 barra) y de la vela actual
+prev_token = token[1]
+curr_token = token
+
+// Definimos los patrones validados por el Engine C++ (para SPY / Activo analizado)
+bool patron_14_17 = (prev_token == 14 and curr_token == 17)
+bool patron_0_23  = (prev_token == 0  and curr_token == 23)
+
+// Condición final de compra (Entry Signal)
+bool buy_signal = patron_14_17 or patron_0_23
+
+// ==========================================
+// 3. EJECUCIÓN Y VISUALIZACIÓN
+// ==========================================
+
+// Entrada al cierre si se detecta la señal
+if (buy_signal)
+    strategy.entry("Long", strategy.long)
+
+// Salida automática a 1 día de hold (al cierre de la siguiente vela)
+if (ta.barssince(buy_signal) >= 1)
+    strategy.close("Long")
+
+// Marcas gráficas en el chart
+plotshape(series=buy_signal, title="Señal de Compra", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small, text="BUY")
+plot(sma50, title="SMA 50", color=color.orange, linewidth=2)
