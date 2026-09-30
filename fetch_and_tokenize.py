@@ -1,4 +1,5 @@
 import argparse
+import pandas as pd
 import yfinance as yf
 from tokenizer import tokenizar_dataframe
 
@@ -16,7 +17,7 @@ def main():
     df = df[['Open', 'High', 'Low', 'Close']].dropna()
     df = tokenizar_dataframe(df)
 
-    # Split Train (In-Sample para minar) y Test (Out-of-Sample para evaluar)
+    # Split Train (In-Sample para minar)
     train_df = df.loc[:"2018-12-31"]
     
     # Exportamos los datos de entrenamiento para C++

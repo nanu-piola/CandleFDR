@@ -9,7 +9,8 @@ from tokenizer import tokenizar_dataframe
 def main():
     parser = argparse.ArgumentParser(description="CandleFDR Out-of-Sample Backtester")
     parser.add_argument("--ticker", type=str, default="SPY", help="Ticker a evaluar")
-    parser.add_argument("--fee", type=float, default=0.0005, help="Comisión + Slippage por operacion (0.05%)")
+    # Cambiamos % por %% para que argparse no se rompa
+    parser.add_argument("--fee", type=float, default=0.0005, help="Comision y Slippage por operacion (0.05%%)")
     args = parser.parse_args()
 
     if not os.path.exists("winners.csv"):
@@ -75,7 +76,7 @@ def main():
     plt.legend()
     plt.grid(True)
     plt.savefig("equity_curve.png")
-    print("Gráfico OOS guardado como 'equity_curve.png'")
+    print("\nGráfico OOS guardado como 'equity_curve.png'")
     plt.close()
 
 if __name__ == "__main__":

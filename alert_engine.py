@@ -25,9 +25,10 @@ def main():
     df = df[['Open', 'High', 'Low', 'Close']].dropna()
     df = tokenizar_dataframe(df)
 
-    # Verificamos las dos últimas velas cerradas
-    ultimos_tokens = df['Token'].tail(2).tolist()
-    fechas = df.index.tail(2).strftime('%Y-%m-%d').tolist()
+    # Cortamos los últimos 2 registros limpios primero
+    df_ultimos = df.tail(2)
+    ultimos_tokens = df_ultimos['Token'].tolist()
+    fechas = df_ultimos.index.strftime('%Y-%m-%d').tolist()
     
     secuencia_actual = f"{ultimos_tokens[0]}-{ultimos_tokens[1]}"
     print(f"Vela {fechas[0]}: Token {ultimos_tokens[0]}")
