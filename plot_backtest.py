@@ -1,76 +1,82 @@
+import argparse
+import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import yfinance as yf
+from tokenizer import tokenizar_dataframe
 
-# Requerimos matplotlib: pip install matplotlib
+def main():
+    parser = argparse.ArgumentParser(description="CandleFDR Out-of-Sample Backtester")
+    parser.add_argument("--ticker", type=str, default="SPY", help="Ticker a evaluar")
+    parser.add_argument("--fee", type=float, default=0.0005, help="Comisión + Slippage por operacion (0.05%)")
+    args = parser.parse_args()
 
-def correr_backtest_y_graficar(ticker: str):
-    print(f"Simulando estrategia para {ticker}...")
-    df = yf.download(ticker, start="2000-01-01", end="2026-01-01")
-    
+    if not os.path.exists("winners.csv"):
+        print("Error: No existe winners.csv. Corré ./engine primero.")
+        return
+
+    winners_df = pd.read_csv("winners.csv")
+    patrones_ganadores = set(winners_df['pattern_id'].astype(str).tolist())
+
+    df = yf.download(args.ticker, start="2018-01-01") # Descargamos desde 2018 para tener SMA 50 lista en 2019
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
         
     df = df[['Open', 'High', 'Low', 'Close']].dropna()
+    df = tokenizar_dataframe(df)
 
-    # 1. Recreamos la tokenización
-    df['SMA_50'] = df['Close'].rolling(window=50).mean()
-    df['Trend'] = np.where(df['Close'] > df['SMA_50'], 1, 0)
-    df['Color'] = np.where(df['Close'] >= df['Open'], 1, 0)
+    # Filtración estricta OUT-OF-SAMPLE (2019 - Presente)
+    df_oos = df.loc["2019-01-01":].copy()
+
+    df_oos['Prev_Token'] = df_oos['Token'].shift(1)
+    df_oos['Pattern_Key'] = df_oos['Prev_Token'].astype(str).str.replace('.0', '', regex=False) + "-" + df_oos['Token'].astype(str).str.replace('.0', '', regex=False)
+
+    # Señal
+    df_oos['Signal'] = df_oos['Pattern_Key'].isin(patrones_ganadores)
+    signal_mask = df_oos['Signal'].shift(1, fill_value=False)
+
+    # Retorno neto con comisión
+    df_oos['Strat_Return'] = np.where(signal_mask, df_oos['Exec_Return'] - (args.fee * 2), 0.0)
+
+    # Equity Curves
+    df_oos['Market_Return'] = df_oos['Close'].pct_change()
+    df_oos['Equity_Strategy'] = (1 + df_oos['Strat_Return'].fillna(0)).cumprod()
+    df_oos['Equity_Market'] = (1 + df_oos['Market_Return'].fillna(0)).cumprod()
+
+    # Métricas Quant
+    trades = df_oos[signal_mask]
+    n_trades = len(trades)
     
-    df['Body'] = (df['Close'] - df['Open']).abs()
-    total_range = (df['High'] - df['Low']).replace(0, np.nan)
-    df['Body_Rel'] = df['Body'] / total_range
-    df['Body_Cat'] = np.where(df['Body_Rel'] > 0.50, 1, 0)
-    
-    max_oc = df[['Open', 'Close']].max(axis=1)
-    min_oc = df[['Open', 'Close']].min(axis=1)
-    df['Upper_Wick'] = (df['High'] - max_oc) / total_range
-    df['Lower_Wick'] = (min_oc - df['Low']) / total_range
-    
-    conditions = [(df['Upper_Wick'] > 0.4), (df['Lower_Wick'] > 0.4)]
-    df['Wick_Cat'] = np.select(conditions, [0, 1], default=2)
-    
-    base_token = (df['Color'].astype(int) * 6 + df['Body_Cat'].astype(int) * 3 + df['Wick_Cat'].astype(int))
-    df['Token'] = df['Trend'].astype(int) * 12 + base_token
+    if n_trades > 0:
+        win_rate = (trades['Exec_Return'] > 0).mean() * 100
+        avg_ret = trades['Exec_Return'].mean() * 100
+    else:
+        win_rate = 0.0
+        avg_ret = 0.0
 
-    # 2. Detección de señales (2-gramas ganadores: 14-17 y 0-23)
-    df['Prev_Token'] = df['Token'].shift(1)
-    df['Signal'] = ((df['Prev_Token'] == 14) & (df['Token'] == 17)) | ((df['Prev_Token'] == 0) & (df['Token'] == 23))
+    # Sharpe Ratio Anualizado
+    daily_rets = df_oos['Strat_Return']
+    sharpe = (daily_rets.mean() / daily_rets.std()) * np.sqrt(252) if daily_rets.std() > 0 else 0.0
 
-    # 3. Simulación de retornos
-    df['Market_Return'] = df['Close'].pct_change()
-    # Entramos al cierre de la señal y mantenemos 1 día
-    df['Strategy_Return'] = np.where(df['Signal'].shift(1), df['Market_Return'], 0.0)
+    print("\n=== METRICAS OUT-OF-SAMPLE (2019-2026) ===")
+    print(f"Total Operaciones OOS: {n_trades}")
+    print(f"Win Rate OOS: {win_rate:.2f}%")
+    print(f"Retorno Medio por Trade: {avg_ret:.2f}%")
+    print(f"Sharpe Ratio Anualizado: {sharpe:.2f}")
 
-    # 4. Curvas de Capital
-    df['Equity_Market'] = (1 + df['Market_Return'].fillna(0)).cumprod()
-    df['Equity_Strategy'] = (1 + df['Strategy_Return'].fillna(0)).cumprod()
-
-    # 5. Métricas clave
-    trades = df[df['Signal'].shift(1).fillna(False)]
-    win_rate = (trades['Market_Return'] > 0).mean() * 100
-    total_trades = len(trades)
-    
-    print("\n=== METRICAS DEL BACKTEST ===")
-    print(f"Total Operaciones Ejecutadas: {total_trades}")
-    print(f"Tasa de Acierto (Win Rate): {win_rate:.2f}%")
-    print(f"Retorno Acumulado Estrategia: {(df['Equity_Strategy'].iloc[-1] - 1) * 100:.2f}%")
-    print(f"Retorno Acumulado Mercado: {(df['Equity_Market'].iloc[-1] - 1) * 100:.2f}%")
-
-    # 6. Plotting
-    plt.figure(figsize=(12, 6))
-    plt.plot(df.index, df['Equity_Strategy'], label="Estrategia FDR Pattern Alpha", color="green", linewidth=2)
-    plt.plot(df.index, df['Equity_Market'], label=f"Buy & Hold ({ticker})", color="gray", alpha=0.5)
-    plt.title(f"Curva de Capital - FDR Pattern Mining Strategy ({ticker})")
-    plt.xlabel("Fecha")
-    plt.ylabel("Multiplicador de Capital")
+    # Plotting no bloqueante
+    plt.figure(figsize=(10, 5))
+    plt.plot(df_oos.index, df_oos['Equity_Strategy'], label="CandleFDR (OOS)", color="green", linewidth=2)
+    plt.plot(df_oos.index, df_oos['Equity_Market'], label=f"Buy & Hold ({args.ticker})", color="gray", alpha=0.5)
+    plt.title(f"Out-of-Sample Equity Curve - CandleFDR ({args.ticker})")
+    plt.ylabel("Multiplicador de Capital (Escala Log)")
+    plt.yscale("log")
     plt.legend()
     plt.grid(True)
     plt.savefig("equity_curve.png")
-    print("\n Gráfico guardado exitosamente como 'equity_curve.png'")
-    plt.show()
+    print("Gráfico OOS guardado como 'equity_curve.png'")
+    plt.close()
 
 if __name__ == "__main__":
-    correr_backtest_y_graficar("SPY")
+    main()

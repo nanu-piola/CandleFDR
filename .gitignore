@@ -2,5 +2,6 @@
 __pycache__/
 engine
 tokens_data.csv
+winners.csv
 equity_curve.png
 .DS_Store

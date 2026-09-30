@@ -1,25 +1,33 @@
 #!/bin/bash
+set -euo pipefail
+
+TICKER="${1:-SPY}"
 
 echo "=================================================="
-echo "   FDR PATTERN MINING & ALPHA ENGINE PIPELINE    "
+echo "    CANDLEFDR QUANTITATIVE ENGINE PIPELINE       "
 echo "=================================================="
+echo "Activo Seleccionado: $TICKER"
 
-# 1. Extracción de datos y tokenización
-echo -e "\n[1/4] Descargando datos y generando tokens..."
-python fetch_and_tokenize.py
+# 1. Compilación de C++ con C++17
+echo -e "\n[1/5] Compilando motor C++..."
+g++ -O3 -std=c++17 engine.cpp -o engine
 
-# 2. Minería C++ y Test de Hipótesis FDR
-echo -e "\n[2/4] Ejecutando motor de minería estadístico en C++..."
+# 2. Extracción de datos
+echo -e "\n[2/5] Extrayendo y tokenizando datos (Train: 2000-2018)..."
+python3 fetch_and_tokenize.py --ticker "$TICKER"
+
+# 3. Minería C++ y Test de Hipótesis FDR
+echo -e "\n[3/5] Minando patrones significativos con FDR Step-Up..."
 ./engine
 
-# 3. Alertas en tiempo real para el día de hoy
-echo -e "\n[3/4] Escaneando mercado para señal de hoy..."
-python alert_engine.py
+# 4. Alertas en tiempo real
+echo -e "\n[4/5] Escaneando señal de mercado para hoy..."
+python3 alert_engine.py --ticker "$TICKER"
 
-# 4. Generación de backtest y gráficos
-echo -e "\n[4/4] Simulando performance histórica y generando curva de capital..."
-python plot_backtest.py
+# 5. Backtest Out-of-Sample
+echo -e "\n[5/5] Ejecutando Backtest Out-of-Sample (2019-2026)..."
+python3 plot_backtest.py --ticker "$TICKER"
 
 echo -e "\n=================================================="
-echo "   PIPELINE COMPLETADO CON ÉXITO   "
+echo "           PIPELINE EXITOSO Y COMPLETO            "
 echo "=================================================="
