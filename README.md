@@ -1,23 +1,28 @@
-# 📈 FDR Pattern Mining & Alpha Engine
+# 📈 CandleFDR: FDR Pattern Mining & Out-of-Sample Alpha Engine
 
-Un motor cuantitativo híbrido (**C++ / Python**) diseñado para descubrir, verificar y filtrar patrones de velas japonesas utilizando **minería de secuencias discretas ($N$-gramas)** y la corrección de hipótesis múltiples de **Benjamini-Hochberg (False Discovery Rate - FDR)**.
+Un motor cuantitativo híbrido (**C++17 / Python**) diseñado para descubrir, verificar y filtrar patrones de velas japonesas utilizando **minería de secuencias discretas ($N$-gramas)** y la corrección de hipótesis múltiples de **Benjamini-Hochberg (False Discovery Rate - FDR Step-Up)**.
 
-Este sistema separa el ruido aleatorio del mercado de las ventajas estadísticas reales (alfa), eliminando falsos positivos comunes en el trading técnico.
+El sistema elimina el ruido aleatorio del mercado y el sobreajuste (*overfitting*), evaluando los patrones descubiertos bajo un régimen estricto de prueba **Out-of-Sample (2019–2026)** con ejecución al Open de $T+1$ y costos de transacción incorporados.
 
 ---
 
 ## 🚀 Arquitectura del Pipeline
 
 
-[yfinance / Python] ──> [Tokenización de Velas] ──> [Engine C++ (Fast Search & FDR)]
-│                                                               |
-[Alertas en Tiempo Real] <── [Backtest & Plots] <───────────────┘
+[yfinance / Python] ──> [tokenizer.py] ──> [Engine C++17 (FDR Step-Up)]
+│
+[Alertas en Tiempo Real] <── [winners.csv] <───────────┘
+│
+[Backtest Out-of-Sample (2019-2026)]
 
 
-1. **`fetch_and_tokenize.py`**: Bautiza y discretiza el histórico del activo en un alfabeto de tokens (combinando color, tamaño de cuerpo, mechas y posición respecto a la SMA 50).
-2. **`engine.cpp`**: Mina secuencias ($N$-gramas) a alta velocidad en C++, calcula $t$-statistic, $p$-values y aplica el filtro **FDR (q = 0.05)**.
-3. **`alert_engine.py`**: Lee la última vela cerrada y notifica si se formó una secuencia ganadora hoy.
-4. **`plot_backtest.py`**: Genera métricas de efectividad (Win Rate, Retorno Acumulado) y la curva de equity comparada contra *Buy & Hold*.
+
+1. **`tokenizer.py`**: Módulo centralizado de tokenización determinística con umbrales fijos (0.50 cuerpo, 0.40 mechas) que previene el *look-ahead bias*.
+2. **`fetch_and_tokenize.py`**: Descarga el historial con `yfinance` y exporta la ventana **In-Sample (2000–2018)** para la minería cuantitativa en C++.
+3. **`engine.cpp`**: Motor en C++17 con cálculo de varianza $N-1$, $p$-values precisos mediante `std::erfc`, filtro **FDR Step-Up ($q = 0.05$)**, selección de $t_{stat} > 0$ y exportación dinámica a `winners.csv`.
+4. **`alert_engine.py`**: Lee `winners.csv` y escanea las velas recientes para alertar si hoy se formó un patrón ganador validado.
+5. **`plot_backtest.py`**: Evalúa la estrategia **exclusivamente en el período Out-of-Sample (2019–2026)** ingresando al Open de $T+1$, aplicando comisiones/slippage y generando métricas finas (Sharpe Ratio, Win Rate, Equity Curve).
+6. **`run_pipeline.sh`**: Script ejecutable en Bash con `set -euo pipefail` que compila el motor C++17 y ejecuta las 5 etapas del pipeline en un solo comando.
 
 ---
 
@@ -25,7 +30,7 @@ Este sistema separa el ruido aleatorio del mercado de las ventajas estadísticas
 
 ```bash
 # 1. Clonar el repositorio
-git clone [https://github.com/nanu-piola/CandleFDR](https://github.com/nanu-piola/CandleFDR)
+git clone [https://github.com/nanu-piola/CandleFDR.git](https://github.com/nanu-piola/CandleFDR.git)
 cd CandleFDR
 
 # 2. Crear y activar entorno virtual
@@ -33,66 +38,42 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # 3. Instalar dependencias de Python
-pip install pandas numpy yfinance matplotlib
+pip install -r requirements.txt
 
-# 4. Compilar el motor C++ con máxima optimización
-g++ -O3 engine.cpp -o engine
-
-# 5. Dar permisos al pipeline ejecutable
+# 4. Dar permisos de ejecución al pipeline
 chmod +x run_pipeline.sh
 
----
 
-Ejecutar con 1 solo comando
-
-para correr todo el análisis de punta a punta (descarga, mineria, alerta diaria y gráfico):
-
-./run_pipeline.sh
-
----
-
-🔄 ¿Cómo adaptarlo a otros activos (XRP, BTC, ETH, PEPE, S&P 500, etc.)?
-El motor es 100% agnóstico al activo. Si querés analizar otra cripto o acción, solo tenés que modificar estas 3 cosas:
-
-1. Cambiar el ticker de descarga (fetch_and_tokenize.py)
-Abrí fetch_and_tokenize.py y modificá la variable ticker en la última línea (linea 54):
-
-if __name__ == "__main__":
-    ticker = "BTC-USD"  # Ejemplos: "XRP-USD", "ETH-USD", "PEPE-USD", "SPY", "NVDA" (no "USDT" ni "USDC" ni ninguno de esos, solo USD)
-
-Corré python fetch_and_tokenize.py
-
-2. Minar los patrones válidos del nuevo activo (./engine)
-Ejecutá el motor en C++:
-    
-./engine
-
-Mirá la columna FDR Pass. Anotá únicamente los pares que digan SÍ (esos son los patrones con ventaja matemática verificada para este activo específico).
-
-3. Actualizar la alerta y el backtest (alert_engine.py y plot_backtest.py)
-Colocá los patrones ganadores obtenidos en el paso anterior dentro del diccionario PATRONES_GANADORES y cambiá el ticker al final del archivo:
-
-    PATRONES_GANADORES = {
-        (18, 21): "COMPRA (Estrategia Alfa BTC)"}
-    
-
-    if __name__ == "__main__":
-        tokenizar_ultima_secuencia("BTC-USD")
+⚡ Ejecución en Un Solo Comando
+Podés analizar cualquier activo pasando el ticker deseado como argumento (por defecto procesa SPY)[cite: 12]:
 
 
----
 
+Bash
+# Analizar el S&P 500 (SPY)
+./run_pipeline.sh SPY
+
+# Analizar Criptomonedas
+./run_pipeline.sh BTC-USD
+./run_pipeline.sh ETH-USD
+./run_pipeline.sh XRP-USD
+
+# Analizar Acciones Individuales
+./run_pipeline.sh NVDA
+./run_pipeline.sh AAPL
+
+
+🔄 ¿Cómo funciona con otros activos?
+El pipeline es 100% dinámico. Cuando ejecutás ./run_pipeline.sh TICKER:
+
+Se descargan los datos y se tokenizan con tokenizer.py.
+
+El motor C++ mina los patrones significativos de ese activo en el período de entrenamiento (2000-2018) y guarda los patrones aprobados por FDR en winners.csv.
+
+Los scripts de alerta y backtest leen automáticamente winners.csv, garantizando que siempre se operen los patrones estadísticamente válidos para el ticker seleccionado.
 
 📊 Integración con TradingView (Pine Script)
-El repositorio incluye la versión adaptada en Pine Script v5 en el archivo strategy.pinescript. Copiá y pegá el código en el Editor Pine de TradingView para visualizar las entradas directamente sobre las velas de tu gráfico.
-
-
-
-
-
-
-
-
+El archivo strategy.pinescript contiene la implementación oficial en Pine Script v5. Incluye la instrucción process_orders_on_close=true para garantizar una ejecución 1:1 sincronizada con la simulación en Python.
 
 
 
