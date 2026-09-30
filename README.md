@@ -25,8 +25,8 @@ Este sistema separa el ruido aleatorio del mercado de las ventajas estadísticas
 
 ```bash
 # 1. Clonar el repositorio
-git clone [https://github.com/nanu-piola/fdr-pattern-engine.git](https://github.com/nanu-piola/fdr-pattern-engine.git)
-cd fdr-pattern-engine
+git clone [https://github.com/nanu-piola/CandleFDR](https://github.com/nanu-piola/CandleFDR)
+cd CandleFDR
 
 # 2. Crear y activar entorno virtual
 python3 -m venv .venv
@@ -78,3 +78,24 @@ Colocá los patrones ganadores obtenidos en el paso anterior dentro del dicciona
 
     if __name__ == "__main__":
         tokenizar_ultima_secuencia("BTC-USD")
+
+
+---
+
+
+📊 Integración con TradingView (Pine Script)
+El repositorio incluye la versión adaptada en Pine Script v5 en el archivo strategy.pinescript. Copiá y pegá el código en el Editor Pine de TradingView para visualizar las entradas directamente sobre las velas de tu gráfico.
+
+
+
+
+
+
+
+
+
+
+
+
+Licencia
+MIT License - Desarrollado de forma libre para fines educativos y cuantitativos.
